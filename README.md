@@ -13,6 +13,8 @@ A powerful Model Context Protocol (MCP) server for Docker operations, enabling s
 - 📦 Docker Compose stack deployment
 - 🔍 Container logs retrieval
 - 📊 Container listing and status monitoring
+- 🌐 **Remote Docker host support** (via `DOCKER_HOST` and `DOCKER_CONTEXT`)
+- 🔎 **Detailed container inspection** (ports, volumes, environment variables)
 
 ### 🎬 Demos
 #### Deploying a Docker Compose Stack
@@ -41,6 +43,40 @@ To try this in Claude Desktop app, add this to your claude config files:
       "args": [
         "docker-mcp"
       ]
+    }
+  }
+}
+```
+
+### Remote Docker Host Support
+
+To connect to a remote Docker host, use environment variables:
+
+```json
+{
+  "mcpServers": {
+    "docker-mcp": {
+      "command": "uvx",
+      "args": ["docker-mcp"],
+      "env": {
+        "DOCKER_HOST": "ssh://user@remote-host"
+      }
+    }
+  }
+}
+```
+
+Or use Docker contexts:
+
+```json
+{
+  "mcpServers": {
+    "docker-mcp": {
+      "command": "uvx", 
+      "args": ["docker-mcp"],
+      "env": {
+        "DOCKER_CONTEXT": "remote-context"
+      }
     }
   }
 }
@@ -175,6 +211,23 @@ Lists all Docker containers
 ```json
 {}
 ```
+
+### get-container-info
+Get detailed information about a specific container including ports, volumes, environment variables, and resource limits
+```json
+{
+    "container_name": "my-container"
+}
+```
+
+Returns comprehensive container details including:
+- Container metadata (ID, status, image, creation time)
+- Environment variables
+- Port mappings  
+- Volume mounts
+- Network settings
+- Resource limits
+- Working directory and command
 
 ## 🚧 Current Limitations
 
