@@ -143,6 +143,17 @@ async def handle_list_tools() -> List[types.Tool]:
                 "type": "object",
                 "properties": {}
             }
+        ),
+        types.Tool(
+            name="get-container-info",
+            description="Get detailed information about a specific container (ports, volumes, environment variables, etc.)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "container_name": {"type": "string"}
+                },
+                "required": ["container_name"]
+            }
         )
     ]
 
@@ -161,6 +172,8 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any] | None) -> List[
             return await DockerHandlers.handle_get_logs(arguments)
         elif name == "list-containers":
             return await DockerHandlers.handle_list_containers(arguments)
+        elif name == "get-container-info":
+            return await DockerHandlers.handle_get_container_info(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
     except Exception as e:

@@ -6,7 +6,20 @@ import platform
 from python_on_whales import DockerClient
 from mcp.types import TextContent, Tool, Prompt, PromptArgument, GetPromptResult, PromptMessage
 from .docker_executor import DockerComposeExecutor
-docker_client = DockerClient()
+
+def get_docker_client():
+    """Get DockerClient with support for DOCKER_HOST and DOCKER_CONTEXT env vars."""
+    docker_host = os.getenv('DOCKER_HOST')
+    docker_context = os.getenv('DOCKER_CONTEXT')
+    
+    if docker_host:
+        return DockerClient(host=docker_host)
+    elif docker_context:
+        return DockerClient(context_name=docker_context)
+    else:
+        return DockerClient()
+
+docker_client = get_docker_client()
 
 
 async def parse_port_mapping(host_key: str, container_port: str | int) -> tuple[str, str] | tuple[str, str, str]:
@@ -192,3 +205,104 @@ class DockerHandlers:
         except Exception as e:
             debug_output = "\n".join(debug_info)
             return [TextContent(type="text", text=f"Error listing containers: {str(e)}\n\nDebug Information:\n{debug_output}")]
+
+    @staticmethod
+    async def handle_get_container_info(arguments: Dict[str, Any]) -> List[TextContent]:
+        debug_info = []
+        try:
+            container_name = arguments.get("container_name")
+            if not container_name:
+                raise ValueError("Missing required container_name")
+
+            debug_info.append(f"Getting detailed info for container '{container_name}'")
+            
+            # Get full container inspection data
+            container = await asyncio.to_thread(docker_client.container.inspect, container_name)
+            
+            # Format comprehensive container information
+            info_lines = [
+                f"=== Container Information ===",
+                f"Name: {container.name}",
+                f"ID: {container.id}",
+                f"Status: {container.state.status}",
+                f"Image: {container.config.image}",
+                f"Created: {container.created}",
+                f"Started: {container.state.started_at if hasattr(container.state, 'started_at') else 'N/A'}",
+                "",
+                f"=== Environment Variables ==="
+            ]
+            
+            # Environment variables
+            if container.config.env:
+                for env_var in container.config.env:
+                    info_lines.append(f"  {env_var}")
+            else:
+                info_lines.append("  No environment variables set")
+            
+            info_lines.extend(["", f"=== Port Mappings ==="])
+            
+            # Port mappings
+            if hasattr(container, 'network_settings') and container.network_settings.ports:
+                for container_port, host_configs in container.network_settings.ports.items():
+                    if host_configs:
+                        for host_config in host_configs:
+                            info_lines.append(f"  {host_config.get('HostIp', '0.0.0.0')}:{host_config['HostPort']} -> {container_port}")
+                    else:
+                        info_lines.append(f"  {container_port} (not bound to host)")
+            else:
+                info_lines.append("  No port mappings")
+            
+            info_lines.extend(["", f"=== Volume Mounts ==="])
+            
+            # Volume mounts
+            if container.mounts:
+                for mount in container.mounts:
+                    mount_type = getattr(mount, 'type', 'unknown')
+                    source = getattr(mount, 'source', 'N/A')
+                    destination = getattr(mount, 'destination', 'N/A')
+                    mode = getattr(mount, 'mode', 'N/A')
+                    info_lines.append(f"  {mount_type}: {source} -> {destination} ({mode})")
+            else:
+                info_lines.append("  No volume mounts")
+            
+            info_lines.extend(["", f"=== Network Settings ==="])
+            
+            # Network information
+            if hasattr(container, 'network_settings'):
+                networks = getattr(container.network_settings, 'networks', {})
+                if networks:
+                    for network_name, network_info in networks.items():
+                        ip_address = getattr(network_info, 'ip_address', 'N/A')
+                        info_lines.append(f"  Network: {network_name} (IP: {ip_address})")
+                else:
+                    info_lines.append("  No network information available")
+            
+            info_lines.extend(["", f"=== Resource Limits ==="])
+            
+            # Resource limits
+            if hasattr(container.host_config, 'memory') and container.host_config.memory:
+                memory_limit = container.host_config.memory / (1024*1024)  # Convert to MB
+                info_lines.append(f"  Memory Limit: {memory_limit:.0f}MB")
+            else:
+                info_lines.append("  Memory Limit: Not set")
+                
+            if hasattr(container.host_config, 'cpu_shares') and container.host_config.cpu_shares:
+                info_lines.append(f"  CPU Shares: {container.host_config.cpu_shares}")
+            else:
+                info_lines.append("  CPU Shares: Not set")
+            
+            info_lines.extend(["", f"=== Working Directory & Command ==="])
+            info_lines.append(f"  Working Dir: {getattr(container.config, 'working_dir', 'N/A')}")
+            
+            if hasattr(container.config, 'cmd') and container.config.cmd:
+                cmd_str = ' '.join(container.config.cmd) if isinstance(container.config.cmd, list) else str(container.config.cmd)
+                info_lines.append(f"  Command: {cmd_str}")
+            else:
+                info_lines.append("  Command: N/A")
+            
+            container_info = "\n".join(info_lines)
+            return [TextContent(type="text", text=f"{container_info}\n\nDebug Info:\n{chr(10).join(debug_info)}")]
+            
+        except Exception as e:
+            debug_output = "\n".join(debug_info)
+            return [TextContent(type="text", text=f"Error getting container info: {str(e)}\n\nDebug Information:\n{debug_output}")]
